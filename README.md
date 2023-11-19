@@ -6,9 +6,9 @@ Should work on any programming languages because whitespace indentation is respe
 file.pwb
 
 # Syntax introduced
-`@`: on its own line starts a comment block, which lasts until start of the next comment / code block
-`<<fragment name>>`: references a code block. Can refer to blocks before their creation
-`<<fragment name>>=`: on its own line starts a code block, which lasts until start of the next comment / code block. Repeated uses of this throughout the program will just concatenate those code fragments with the same identifier at the same indentation level.
+- `@`: on its own line starts a comment block, which lasts until start of the next comment / code block
+- `<<fragment name>>`: references a code block. Can refer to blocks before their creation
+- `<<fragment name>>=`: on its own line starts a code block, which lasts until start of the next comment / code block. Repeated uses of this throughout the program will just concatenate those code fragments with the same identifier at the same indentation level.
 
 # Challenges
 One challenge of python is that whitespace is significant. So I can't tangle an absolute garbage mess. Indentation must be respected for it to be a valid (and intended) python program.
