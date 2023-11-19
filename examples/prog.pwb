@@ -1,0 +1,30 @@
+@
+Top level shit man
+
+<<main>>=
+x = 6
+if x <= 5:
+    # block is indented
+    <<true block>>
+else:
+    <<false block>>
+
+<<main>>=
+print('just appending same named fragments tgt')
+
+@
+Now we examine whether we can create blocks properly, and whether indentation works. This only shows 1st level indentation works, not whether nested indentation does. Actually, let's fix that.
+
+<<true block>>=
+print('in true block')
+
+<<false block>>=
+print('in false block. I want another indented block below me')
+<<while loop for 5 times>>
+
+@
+multiple code blocks can be declared after each other. Chunks do not have to strictly alternate between 1 code block and 1 comment block.
+
+<<while loop for 5 times>>=
+for x in range(5):
+    print(x)
