@@ -1,0 +1,31 @@
+@ doc chunk, on same line as @
+@                          also doc chunk, same line, but with much more whitespace (spaces and tabs)
+@
+doc chunk, on diff line as @
+@
+also doc chunk, diff line, but with much more whitespace (spaces and tabs)
+
+
+<<*>>=
+print('hi')
+<<multiline block>>
+
+<<multiline block>>=
+if <<True condition>>:
+    <<Print multiple values>>
+else:
+    print('false')
+
+<<True condition>>= False or (True and True)
+
+<<Print multiple values>>= 
+print(<<inline expr1>>, <<inline expr2>>, <<inline expr3>>)
+
+<<inline expr1>>=       "here's a tuple and a dictionary:"
+<<inline expr2>>=  (<<tup1>>, <<tup2>>)
+<<inline expr3>>=           {i:i*i for i in range(20)} 
+
+<<tup1>>= 123
+<<tup2>>= 456
+
+@ doc chunk again
