@@ -1,15 +1,15 @@
 @
 Here's the common structure of a python file
 
-<<main>>=
-<<imports>>
-<<global function definitions>>
-<<main function>>
+@<main@>=
+@<imports@>
+@<global function definitions@>
+@<main function@>
 
 if __name__ == '__main__':
     main()
 
-<<imports>>=
+@<imports@>=
 # some random imports i'm not going to use
 import sys
 import re
@@ -17,15 +17,15 @@ import datetime
 
 @
 at this point i feel the need to define a `plus` function
-<<global function definitions>>=
+@<global function definitions@>=
 def plus(a, b):
     return a + b
 
-<<main function>>=
+@<main function@>=
 def main():
-    <<main body>>
+    @<main body@>
 
-<<main body>>=
+@<main body@>=
 print('please enter 2 numbers, separated by <ENTER>')
 a = int(input())
 b = int(input())
@@ -35,11 +35,11 @@ print(f'the sum is: {plus(a, b)}')
 @ 
 at this point i feed the need to define a 'mult' function. Showing code fragment concatenation.
 
-<<global function definitions>>=
+@<global function definitions@>=
 def mult(a, b):
     return a * b
 
 
-<<main body>>=
+@<main body@>=
 # showing we can concat to the main body too
 print(f'and the product of the 2 nums is: {mult(a,b)}')
