@@ -25,7 +25,6 @@ Should work on any programming languages because whitespace indentation is respe
 python main.py --src_path PWB_SOURCE_FILE [--top_lvl_fragment FRAGMENT_NAME] [--include_src_lineno]
 ```
 
-
 # Features & Tutorial mixed tgt
 - credits: The idea for which features to implement, and the main explanation of each of the features, is largely copied from the [noweb man pages](https://man.cx/noweb(1)), with some edits where this implementation has different functionality.
 
@@ -51,51 +50,3 @@ python main.py --src_path PWB_SOURCE_FILE [--top_lvl_fragment FRAGMENT_NAME] [--
 - line number information is in the form of comments. The comment syntax used is now fixed as Python comments (#). Have this be an input format so it's more flexible.
 - for compiler swag, make pyweb "self-hosted"? Meaning implement pyweb using a pyweb src file.
 - for better diagnostics, probably make a line class which stores each source line and lineno. Right now i only have lineno as the line a code fragment was defined.
-
-# CWEB Manual takeaways:
-- maybe use `@<` and `@>` instead? or for inline references specifically?
-- for code fragment names matching, it allows references to only be prefixes of the definition
-
-
-# post-mortem on doing the refactor. Why was i so lost, and what did i do to solve it?
-- what was i trying to solve? Allow inline code fragments. So i had to solve inline fragment definitions and referencing.
-  - allow defining of multiline code fragments on separate lines. This is just preserving functionality.
-  - allow defining of inline code fragments. I wanted some flexibility.
-    - have code on the same line as defn or on new line
-  - to introduce new syntax to differentiate the two?
-    - in the end i didn't
-- what were the problems?
-  - how to process? pure C style parsing and non-linebased? Or using line-based without regex? Or line-based and with regex? Which stage to handle empty pwb file lines?
-  - for those inline code frags, what whitespace to store and how much to trim upon expansion?
-    - how much text to store?
-      - storing too much whitespace, then how to insert during expansion without messing alignment up?
-      - store all whitespace? right_trimmed? left_trimmed? What about difference in whitespace for inline defn on same line vs new line?
-    - seems to have different expansion procedures for multiline and inline code frags, which made it hard to think of a general procedure to do both.
-      - multiline substitution:
-        - the newline after the code fragment would be removed
-        - indentation of every line has to be respected
-      - inline substutition:
-        - the newline after the code fragment would NOT be removed
-        - no indentation woes, could just expand the code in place, trimming all surrounding whitespace. Also didn't have to worry about multiline-inline code frags bc i limited the scope for ease of design and impl.
-  - allow concatenation of inline frags? 
-    - The inline frag could possibly last multiple lines, but it would be super difficult to make the tangle valid python. So i reduced scope: can only do single line inline fragment.
-  - just worried about excessive string copying each time. In the end i think i make a whole copy of the output file code basically every expansion pass i make. If the source code file becomes massive, that might become a problem. So perhaps premature optimization made me unable to do the simple solution that worked but could be improved.
-  - when to do validation of each part? when processing? when substituting? at the start? Too overwhelming.
-- how did i solve each of them?
-  - did some iterations thing. As usual, when processing chunks of array, seems helpful to iterate to the start of chunk, spawn another pointer j, and iterate that till after the chunk. That can handle end of array and end of chunk pretty nicely. So the invariant is that j will always point to first index after end of cur chunk. Invariants like those are nice, they're simple enough for me to understand.
-  - i think i'm too used to iterating once, no back- or forward-track of iteration, over an iterable. But sometimes i need something more flexible than just a once-through iteration.
-  - since i (eventually, unsystematically) realised that multiline expansion and inline expansion were quite different in terms of steps, i broke the expansion into 2 different phases too.
-    - the ML pass and IL pass. Then since i alr had the ML pass impl from the existing version, that made the incremental functionality no that much harder for the expansion step.
-      - this idea of just doing something (even though not globally optimal), but with each subroutine i write my pen is getting mightier. I may not know how to get from A to Z, but my (wrong) function can get from A to M. And then it's easier to see how to get from M to Z. Then do composition. Even though the overall isn't globally efficient, again. I shouldn't worry about it at this point, even though in the end 99% of the time i'm writing super O(N^2) style code :sad face:
-    - Then the expansion i took a super simple "while have at least 1 more to process, process it" approach. Simplest, even though most naieve, but who cares at this point yknow? Premature optimization.
-  - using classes to have basically global variables among the set of class methods, but not fully global such that it polluted the scope.
-  - used the same repr for ML and IL code frags, but had to use discipline of making sure inline frags were only 1 line long. Then validation (which in the end was only done for inline frags), was done when it was most convenient. In this case that was during inline expansion. Since i didn't care about computational efficiency, i could expand basically the entire source code alr, and in the last inline expansion it could fail. But idc alr.
-  - had this eurika moment when i could visualize the code transformation process bc i have just been thinking about it for days. That a code ref is a list of code frags. And each code frag expanded to its (optional) source lineno, and a list of code lines. That process was visualized beautifully for multiline expansion. But i totally scrapped that after i realised that i wasn't applicable to inline expansion / tried to make something that could work for both. In the end specially coded 2 separate functions
-- TIL:
-  - regex stuff: 
-    - .* is performs greedy match
-    - .*? performs minimally greedy match
-    - this is relevant if i'm matching `<.*>` vs `<.*?>` in the string `<A> <B> <C> <D> <E>`, where i should pair up the minimal of stuff between openning and closing brackets, instead of the max number of things, which would enclose nested brackets entirely.
-  - this idea of just inch closer to the solution one step. Then while not done, inch closer. It might not be the most efficient, but seems like whenever i'm stuck, i just process 1 thing. Then iterate to process any number of things. Then abstract that away to process 1 series of things. Then iterate to process any number of series of things, until the problem is solved.
-    - multiline expansion: just expand 1 ML code frag ref at a time.
-    - inline expansion: just expand the 1st IL code frag ref in the src. And copy the whole source rip.
