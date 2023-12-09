@@ -6,7 +6,7 @@ from typing import Any
 import click
 import logging
 from pathlib import Path
-from pprint import pprint
+from pprint import pprint, pformat
 from dataclasses import dataclass
 
 
@@ -42,7 +42,7 @@ IR = dict[str, list[CodeFragment]]
 
 class PyWeb:
     CODE_FRAGMENT_DEFN_RE = re.compile(
-        r'@<(?P<fragment_name>.*?)@>=(?P<trailing_text>.*\n)')
+        r'@<(?P<fragment_name>.*?)@>=(?P<trailing_text>.*)$')
     CODE_FRAGMENT_MULTILINE_REFERENCE_RE = re.compile(
         r'(?P<leading_whitespace>\s*)@<(?P<fragment_name>.*?)@>')
     # CODE_FRAGMENT_INLINE_REFERENCE_RE = re.compile(
@@ -106,15 +106,17 @@ class PyWeb:
                 match = PyWeb.CODE_FRAGMENT_DEFN_RE.match(line)
                 assert match is not None, f'line should be start of code fragment, but doesn\'t match code fragment defn regex {line=}'
                 code_lines: list[str] = []
-                if not match.group('trailing_text').isspace():
+                trailing_text = match.group('trailing_text')
+                # trailing_text.isspace() is False for the empty string...
+                if trailing_text.strip() != '':
                     # inline code frag defn
                     # save it with all the surrounding whitespace
-                    code_lines.append(match.group('trailing_text'))
+                    code_lines.append(trailing_text)
 
                 # lines[i+1:j] are source lines belonging to this chunk, including empty lines
                 # omit them
                 code_lines.extend(
-                    ln for ln in lines[i+1:j] if not ln.isspace())
+                    ln for ln in lines[i+1:j] if ln.strip() != '')
 
                 self.insert_code_fragment(CodeFragment(
                     name=match.group('fragment_name'),
@@ -147,15 +149,9 @@ class PyWeb:
 
     def multiline_expand(self, root_fragment: str, include_source_lineno: bool = True) -> str:
         # output lines of source code
-        out_lines: list[str] = []
+        # keep expanding lines in the output lines if they are multiline code references. So start with a single reference to the root fragment.
+        out_lines: list[str] = [f'@<{root_fragment}@>']
         next_out_lines: list[str] = []
-        frags = self.fragment_map[root_fragment]
-        for i, frag in enumerate(frags):
-            if include_source_lineno:
-                next_out_lines.append(
-                    '# ' + ('' if i != 0 else f'<<{frag.name}>>, ') + f'line {frag.defn_lineno}')
-            for line in frag.code_lines:
-                out_lines.append(line)
 
         pass_number = 1
 
@@ -163,6 +159,7 @@ class PyWeb:
         while another_pass:
             another_pass = False
 
+            print()
             print(f'{"="*20} multi-line expansion pass num={pass_number} {"="*20}')
             [print(ln, end='') for ln in out_lines]
             pass_number += 1
@@ -178,9 +175,10 @@ class PyWeb:
                     frag_name = match.group('fragment_name')
                     indentation = match.group('leading_whitespace')
                     for i, frag in enumerate(self.fragment_map[frag_name]):
+                        # maybe print line number relating to this fragment
                         if include_source_lineno:
                             next_out_lines.append(
-                                indentation + '# ' + ('' if i != 0 else f'<<{frag.name}>>, ') + f'line {frag.defn_lineno}')
+                                indentation + '# ' + ('' if i != 0 else f'<<{frag.name}>>, ') + f'line {frag.defn_lineno}\n')
                         for expanded_line in frag.code_lines:
                             # tricky: every line in the expanded fragment must be indented by the indentation of the enclosing fragment.
                             next_out_lines.append(indentation+expanded_line)
@@ -221,11 +219,11 @@ class PyWeb:
             frag_name = source_code[si+2:ei]
             frags = self.fragment_map[frag_name]
             assert len(
-                frags) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 fragment definition.'
+                frags) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 fragment definition:\n{pformat(frags)}'
             frag = frags[0]
             code_lines = frag.code_lines
             assert len(
-                code_lines) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 line of code.'
+                code_lines) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 line of code:\n{pformat(code_lines)}'
             code_line = code_lines[0]
             # insert it without any whitespace
             source_code = source_code[:si] + \
@@ -249,8 +247,12 @@ def tangle(src_path: Path, top_lvl_fragment: str, include_src_lineno: bool) -> N
     src_path = Path('.').resolve() / src_path
     pyweb = PyWeb(src_path)
     pprint(pyweb.fragment_map)
-    print(pyweb.tangle(root_fragment=top_lvl_fragment,
-          include_source_lineno=include_src_lineno))
+
+    tangled_src = pyweb.tangle(
+        root_fragment=top_lvl_fragment, include_source_lineno=include_src_lineno)
+    print()
+    print(f'{"="*20} Final Tangled Output {"="*20}')
+    print(tangled_src)
 
 
 if __name__ == '__main__':
