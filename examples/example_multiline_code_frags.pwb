@@ -1,0 +1,32 @@
+
+@ At the top level block of `Indentation demonstration`, the 2 code fragments under it are not indented relatative to the top level code block.
+
+@<*@>=
+@<Variable declarations@>
+@<Print stuff@>
+
+@<Variable declarations@>=
+i = 0
+j = 0
+
+@ Notice that the code fragments inside the while loop are indented.
+Every line in the expansion of those fragments will be indented by that amount.
+
+@<Print stuff@>=
+while i <= 10 and j <= 10:
+    @<Print i and j@>
+    @<Increment i and j@>
+  
+
+@<Print i and j@>=
+print(i, j)
+
+@<Increment i and j@>=
+i += 1
+j += 1
+
+@ 
+And showing that we can just append to already existing fragments, in this case the root fragment
+
+@<*@>=
+x = y = z = 123

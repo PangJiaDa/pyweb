@@ -1,0 +1,11 @@
+@ The inline expressions can be defined on the same line without space after the closing tag, with arbitrary amount of whitespace,
+or on a newline entirely. They just must be a single line.
+
+@<*@>=
+print(@<inline expr 1@>, @<inline expr 2@>, @<inline expr 3@>)
+
+@<inline expr 1@>="A"
+@<inline expr 2@>=          3+4*5-6
+@<inline expr 3@>=
+
+            {i: i*i for i in range(20)}
