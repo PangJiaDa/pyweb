@@ -1,0 +1,48 @@
+@<term@>="Hello, World!"
+
+@<expr1@>=@<term@>, @<term@>
+@<expr2@>=@<expr1@>, @<expr1@>
+@<expr3@>=@<expr2@>, @<expr2@>
+@<expr4@>=@<expr3@>, @<expr3@>
+@<expr5@>=@<expr4@>, @<expr4@>
+@<expr6@>=@<expr5@>, @<expr5@>
+@<expr7@>=@<expr6@>, @<expr6@>
+
+@<line1@>=
+print(@<expr7@>)
+
+@<line2@>=
+@<line1@>
+@<line1@>
+
+@<line3@>=
+@<line2@>
+@<line2@>
+
+@<line4@>=
+@<line3@>
+@<line3@>
+
+@<line5@>=
+@<line4@>
+@<line4@>
+
+@<line6@>=
+@<line5@>
+@<line5@>
+
+@<line7@>=
+@<line6@>
+@<line6@>
+
+@<line8@>=
+@<line7@>
+@<line7@>
+
+@<line9@>=
+@<line8@>
+@<line8@>
+
+@<line10@>=
+@<line9@>
+@<line9@>
