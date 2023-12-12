@@ -9,6 +9,8 @@ from pathlib import Path
 from pprint import pprint, pformat
 from dataclasses import dataclass
 
+DEBUG: bool = False
+
 
 @dataclass
 class CodeFragment:
@@ -51,6 +53,8 @@ class PyWeb:
     def __init__(self, src_path: Path) -> None:
         self.src_path: Path = src_path
         self.fragment_map: IR = {}
+        # dict of frag_name to expanded code line
+        self.inline_fragment_expansion_cache: dict[str, str] = {}
         self.process()
 
     def process(self) -> None:
@@ -159,10 +163,12 @@ class PyWeb:
         while another_pass:
             another_pass = False
 
-            print()
-            print(f'{"="*20} multi-line expansion pass num={pass_number} {"="*20}')
-            [print(ln, end='') for ln in out_lines]
-            pass_number += 1
+            if DEBUG:
+                print()
+                print(
+                    f'{"="*20} multi-line expansion pass num={pass_number} {"="*20}')
+                [print(ln, end='') for ln in out_lines]
+                pass_number += 1
 
             for line in out_lines:
                 match = PyWeb.CODE_FRAGMENT_MULTILINE_REFERENCE_RE.match(line)
@@ -185,6 +191,66 @@ class PyWeb:
             out_lines = next_out_lines
             next_out_lines = []
         return ''.join(out_lines)
+
+    def expand_inline_code_ref(self, frag_name: str) -> str:
+        """
+        Primarily intended for performance improvements. It caches what an inline code fragment should expand to.
+        Must do recursive expansion of this fragment. And only cache the fully expanded code_text.
+        Also does some validation.
+        """
+        if frag_name in self.inline_fragment_expansion_cache:
+            return self.inline_fragment_expansion_cache[frag_name]
+
+        frags = self.fragment_map[frag_name]
+        assert len(
+            frags) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 fragment definition:\n{pformat(frags)}'
+        frag = frags[0]
+        code_lines = frag.code_lines
+        assert len(
+            code_lines) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 line of code:\n{pformat(code_lines)}'
+        # return it without any whitespace
+        code_line = code_lines[0].strip()
+        # this code_line could have other inline expansions within it. Recursively expand them (caching along the way), and return the code_text fully expanded.
+
+        def find_all(string: str, substr: str) -> list[int]:
+            "Like string.find(), but finds all occurances. Returns empty list if no occurances found."
+            idx = string.find(substr)
+            ans = []
+            while idx != -1:
+                ans.append(idx)
+                idx = string.find(substr, ans[-1]+1)
+            return ans
+
+        # start and end indices
+        sids = find_all(code_line, '@<')
+        eids = find_all(code_line, '@>')
+        # TODO: this can be done much more elegantly with regexes. Find all. It should have a span. The replace all refs with f string templates. And then f string format it back.
+        assert len(sids) == len(
+            eids), f'not matching number of opening and closing inline code fragments detected: {sids} opens and {eids} closes'
+
+        if not sids:
+            # nothing further to expand
+            self.inline_fragment_expansion_cache[frag_name] = code_line
+            return code_line
+
+        # must expand some more inline code refs
+        for sid, eid in zip(sids, eids):
+            assert sid < eid, f'opening inline code tag after closing tag: starts={sids}, ends={eids}, {sid}>{eid}'
+        all_frag_refs = [code_line[si+2:ei] for si, ei in zip(sids, eids)]
+        expanded_frags = [self.expand_inline_code_ref(
+            ref) for ref in all_frag_refs]
+        # put in the bit before 1st match, then put in pairs of expanded part and bit between expansions.
+        parts: list[str] = [code_line[:sids[0]]]
+        for i in range(len(sids)):
+            parts.append(expanded_frags[i])  # code expansion
+            # between expansions, after
+            between = code_line[eids[i]+2:] if i == len(
+                sids) - 1 else code_line[eids[i]+2:sids[i+1]]
+            parts.append(between)
+        expanded_line = ''.join(parts)
+
+        self.inline_fragment_expansion_cache[frag_name] = expanded_line
+        return expanded_line
 
     def inline_expand(self, source_code: str) -> str:
         def inline_tag_helper(src: str) -> tuple[int, int]:
@@ -212,22 +278,14 @@ class PyWeb:
         si, ei = inline_tag_helper(source_code)
         pass_number: int = 1
         while si != -1 and ei != -1:
-            print(f'{"="*20} in-line expansion pass num={pass_number} {"="*20}')
-            print(source_code)
-            pass_number += 1
+            if DEBUG:
+                print(f'{"="*20} in-line expansion pass num={pass_number} {"="*20}')
+                print(source_code)
+                pass_number += 1
 
             frag_name = source_code[si+2:ei]
-            frags = self.fragment_map[frag_name]
-            assert len(
-                frags) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 fragment definition:\n{pformat(frags)}'
-            frag = frags[0]
-            code_lines = frag.code_lines
-            assert len(
-                code_lines) == 1, f'inline reference {frag_name} shouldn\'t have more than 1 line of code:\n{pformat(code_lines)}'
-            code_line = code_lines[0]
-            # insert it without any whitespace
-            source_code = source_code[:si] + \
-                code_line.strip() + source_code[ei+2:]
+            code_line = self.expand_inline_code_ref(frag_name)
+            source_code = source_code[:si] + code_line + source_code[ei+2:]
             si, ei = inline_tag_helper(source_code)
         return source_code
 
@@ -242,16 +300,22 @@ class PyWeb:
 @click.option('--src_path', '-s', help='Path to the pyweb source file to tangle')
 @click.option('--top_lvl_fragment', '-f', default='*', show_default=True, help='Name of the fragment to expand. Typically this is the top level fragment that expands to the whole tangled source file.')
 @click.option('--include_src_lineno', '-L', is_flag=True, default=False, show_default=True, help='In the output file, include comments showing the line in the pyweb file the chunk being expanded was defined.')
-def tangle(src_path: Path, top_lvl_fragment: str, include_src_lineno: bool) -> None:
+@click.option('--debug', '-d', is_flag=True, default=False, show_default=True, help='Prints out code at every code fragment expansion.')
+def tangle(src_path: Path, top_lvl_fragment: str, include_src_lineno: bool, debug: bool) -> None:
     "Prints the tangled source code to stdout. Typically, stdout is redirected into a source code file."
+    global DEBUG
+    DEBUG = debug
+
     src_path = Path('.').resolve() / src_path
     pyweb = PyWeb(src_path)
-    pprint(pyweb.fragment_map)
+    if DEBUG:
+        pprint(pyweb.fragment_map)
 
     tangled_src = pyweb.tangle(
         root_fragment=top_lvl_fragment, include_source_lineno=include_src_lineno)
-    print()
-    print(f'{"="*20} Final Tangled Output {"="*20}')
+    if DEBUG:
+        print()
+        print(f'{"="*20} Final Tangled Output {"="*20}')
     print(tangled_src)
 
 
