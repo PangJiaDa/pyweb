@@ -305,3 +305,36 @@ def import_cmd(ctx: click.Context, pwb_file: str, output_file: str, top_level: s
     ff = store.load_file(rel)
     n = len(ff.fragments) if ff else 0
     click.echo(f"Imported {pwb_file} → {output_file} ({n} fragments created)")
+
+@cli.command()
+@click.argument("file")
+@click.argument("fragment_id")
+@click.argument("start_line", type=int)
+@click.argument("end_line", type=int)
+@click.pass_context
+def resize(ctx: click.Context, file: str, fragment_id: str, start_line: int, end_line: int) -> None:
+    """Resize a fragment to a new line range."""
+    store = _get_store(ctx)
+    _require_init(store)
+    try:
+        store.resize_fragment(file, fragment_id, Range(start_line, 0, end_line, 0))
+        click.echo(f"Resized fragment {fragment_id} → [{start_line}:0 - {end_line}:0]")
+    except ValidationError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+def some_dummy_ass_fun():
+    print()
+    print()
+    print()
+    print()
+
+    for i in range(10):
+        # inner stuffs??
+        a = 1+2
+        b = 'ab' + 'dc'
+        print()
+
+    # nice
+    d = {i:i*i for i in range(20)}

@@ -127,6 +127,26 @@ class TestCliEntryPoint:
         result = run_pyweb("add", "main.py", "block", "0", "5", cwd=str(project))
         assert result.returncode == 1
 
+    def test_resize(self, project):
+        run_pyweb("init", cwd=str(project))
+        result = run_pyweb("add", "main.py", "block", "2", "5", cwd=str(project))
+        frag_id = result.stdout.split("(")[1].split(")")[0]
+
+        result = run_pyweb("resize", "main.py", frag_id, "1", "7", cwd=str(project))
+        assert result.returncode == 0
+        assert "Resized" in result.stdout
+
+    def test_resize_invalid_rejected(self, project):
+        run_pyweb("init", cwd=str(project))
+        p = run_pyweb("add", "main.py", "parent", "0", "10", cwd=str(project))
+        pid = p.stdout.split("(")[1].split(")")[0]
+        c = run_pyweb("add", "main.py", "child", "2", "5", "--parent", pid, cwd=str(project))
+        cid = c.stdout.split("(")[1].split(")")[0]
+
+        # Resize child outside parent → should fail
+        result = run_pyweb("resize", "main.py", cid, "0", "15", cwd=str(project))
+        assert result.returncode == 1
+
     def test_full_workflow(self, project):
         """End-to-end: init, add fragments, view, anchor, check."""
         cwd = str(project)

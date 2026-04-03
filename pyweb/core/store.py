@@ -237,6 +237,55 @@ class FragmentStore:
         frag.name = new_name
         self.save_file(ff)
 
+    def resize_fragment(self, file_path: str, fragment_id: str, new_range: Range) -> None:
+        ff = self.load_file(file_path)
+        if ff is None:
+            raise ValidationError(f"No fragments for {file_path}")
+
+        frag = self._find_fragment(ff, fragment_id)
+        if frag is None:
+            raise ValidationError(f"Fragment '{fragment_id}' not found")
+
+        # Validate: new range must still contain all children
+        by_id = {f.id: f for f in ff.fragments}
+        for cid in frag.children:
+            child = by_id.get(cid)
+            if child and not new_range.contains(child.range):
+                raise ValidationError(
+                    f"New range does not contain child '{child.name}'"
+                )
+
+        # Validate: new range must still be within parent (if any)
+        parent = self._find_parent(ff, fragment_id)
+        if parent is not None and not parent.range.contains(new_range):
+            raise ValidationError(
+                f"New range not contained by parent '{parent.name}'"
+            )
+
+        # Validate: no overlap with siblings
+        if parent is not None:
+            for sib_id in parent.children:
+                if sib_id == fragment_id:
+                    continue
+                sib = by_id.get(sib_id)
+                if sib and sib.range.overlaps(new_range):
+                    raise ValidationError(
+                        f"New range overlaps with sibling '{sib.name}'"
+                    )
+        else:
+            # Check root siblings
+            roots = self._get_roots(ff)
+            for root in roots:
+                if root.id == fragment_id:
+                    continue
+                if root.range.overlaps(new_range):
+                    raise ValidationError(
+                        f"New range overlaps with root '{root.name}'"
+                    )
+
+        frag.range = new_range
+        self.save_file(ff)
+
     def move_fragment(self, file_path: str, fragment_id: str, new_parent_id: str | None) -> None:
         ff = self.load_file(file_path)
         if ff is None:
