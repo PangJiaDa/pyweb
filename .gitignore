@@ -1,2 +1,6 @@
 noweb/
 *.bat
+__pycache__/
+*.pyc
+.pyweb/cache/
+.pytest_cache/

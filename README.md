@@ -47,6 +47,31 @@ The idea for which features to implement, and the main explanation of each of th
   - Inline references, however, are expanded without any leading or trailing whitespace. It is important that inline chunks don't contain newlines characters, or the resulting inline expanded text could be syntactically incorrect.
 - if the `--include_src_lineno` flag is set, pyweb includes a comment in the tangled output, above a code fragment that has been expanded, showing the line number in the pyweb source code where that fragment was defined, or concatenated to an existing fragment.
 
+# Vision
+One source of truth, N views into it, edit at any level. Flick between whichever representation is most useful right now — fully expanded source code, hierarchical fragments, prose-annotated outline — and edits in any view propagate to all others. Each view can be fed into tools that work best with that representation: the expanded source into LSPs, git, and debuggers; the hierarchical view into documentation generators or structural editors. Changes made by any tool in any view propagate back to the source of truth, and therefore to every other view. The current tool is a starting point: a one-way expander (`.pwb` → source). The goal is to close the loop.
+
+# Practical Consideration: Zero-Buy-In Overlay
+
+This tool should work on any existing, unannotated codebase without requiring team adoption or polluting source files.
+
+- **Sidecar metadata, not source annotations.** Fragment definitions (named regions, hierarchy, prose) live in a `.pyweb/` directory, gitignored. The source files are never modified by the tool. Coworkers see clean, normal code.
+- **Anchoring via git diffs.** When the source changes (coworker commits, rebases, etc.), the sidecar's line ranges are updated by applying the same line insertions/deletions reported by `git diff`. This is deterministic — no fuzzy content matching needed. For real-time edits before commit, the extension computes its own diffs on file save.
+- **No tool exists that does this.** The closest precedents are [Leo's @clean](https://leo-editor.github.io/leo-editor/) (bidirectional outline-to-source sync via the Mulder/Ream algorithm, but requires authoring in Leo) and [VS Code CodeTour](https://github.com/microsoft/codetour) (sidecar JSON on unmodified files, but read-only). Nothing combines sidecar-only fragment definitions, bidirectional editing, and zero team buy-in on existing codebases.
+
+# Known Limitations & Future Directions
+
+1. **No IDE support for `.pwb` files.** No jump-to-definition for fragment references, no rename-fragment, no autocomplete for fragment names. You're working with plain text.
+
+2. **No IDE support for the target language within fragments.** Code inside `.pwb` chunks has no syntax highlighting, type checking, or language-aware refactoring. Renaming a variable that spans multiple fragments is entirely manual.
+
+3. **Cannot switch between expanded and unexpanded views.** Sometimes you want to see the hierarchical structure; sometimes you want to see the fully expanded output. There's no way to flick between these two representations of the same code, or to edit in the expanded view and have changes propagate back to the right fragment.
+
+4. **One-way compilation with no round-tripping.** The `.pwb` → tangled source flow is one-directional. The tangled output integrates fine with git, LSPs, and other tools, but edits to the output can't flow back to the `.pwb` source. There's no source map or bidirectional sync.
+
+5. **Can't be used on existing codebases.** You can't take an existing source file, define arbitrary named regions within it, and get the hierarchical view — you'd have to rewrite it as a `.pwb` file. Ideally, the hierarchy metadata (named folding regions) could live as annotations in normal source files, so the source file remains the primary artifact and all existing tools continue to work.
+
+These limitations point toward a more general tool: one that maintains a **tree of named code regions** as the underlying model, with the `.pwb` format and annotated source files as two interchangeable views of that same tree — editable from either side, with full IDE support because the source file is always valid target-language code.
+
 # Examples
 ## Documentation chunk starts: inline / newline start + single line / multiline chunks
 
