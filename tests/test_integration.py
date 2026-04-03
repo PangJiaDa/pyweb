@@ -1,8 +1,9 @@
 """Integration tests: run the actual CLI binary end-to-end.
 
 These tests shell out to `python3 -m pyweb` — the same path the VS Code
-extension uses. Catches issues like missing __main__.py that unit tests miss.
+extension uses.
 """
+import json
 import subprocess
 import pytest
 from pathlib import Path
@@ -32,139 +33,165 @@ class TestCliEntryPoint:
         )
         assert result.returncode == 0
         assert "pyweb" in result.stdout
-        assert "init" in result.stdout
-
-    def test_init_creates_pyweb_dir(self, project):
-        result = run_pyweb("init", cwd=str(project))
-        assert result.returncode == 0
-        assert "Initialized" in result.stdout
-        assert (project / ".pyweb").is_dir()
-        assert (project / ".pyweb" / "config.json").exists()
-        assert (project / ".pyweb" / "fragments").is_dir()
 
     def test_add_fragment(self, project):
-        run_pyweb("init", cwd=str(project))
         result = run_pyweb("add", "main.py", "header", "0", "3", cwd=str(project))
         assert result.returncode == 0
         assert "Created fragment" in result.stdout
+        # Markers should be in the file
+        content = (project / "main.py").read_text()
+        assert "@pyweb:start" in content
+        assert "@pyweb:end" in content
+        assert 'name="header"' in content
 
-    def test_ls_shows_fragment(self, project):
-        run_pyweb("init", cwd=str(project))
+    def test_add_with_prose(self, project):
+        result = run_pyweb("add", "main.py", "block", "0", "3", "--prose", "Explanation", cwd=str(project))
+        assert result.returncode == 0
+        content = (project / "main.py").read_text()
+        assert "@pyweb:prose Explanation" in content
+
+    def test_ls(self, project):
         run_pyweb("add", "main.py", "header", "0", "3", cwd=str(project))
         result = run_pyweb("ls", "main.py", cwd=str(project))
         assert result.returncode == 0
         assert "header" in result.stdout
 
-    def test_add_and_remove(self, project):
-        run_pyweb("init", cwd=str(project))
-        result = run_pyweb("add", "main.py", "block", "0", "5", cwd=str(project))
-        # Extract ID
-        frag_id = result.stdout.split("(")[1].split(")")[0]
+    def test_ls_empty(self, project):
+        result = run_pyweb("ls", "main.py", cwd=str(project))
+        assert result.returncode == 0
+        assert "No fragments" in result.stdout
 
-        result = run_pyweb("rm", "main.py", frag_id, cwd=str(project))
+    def test_rm(self, project):
+        result = run_pyweb("add", "main.py", "block", "1", "4", cwd=str(project))
+        fid = result.stdout.split("(")[1].split(")")[0]
+
+        result = run_pyweb("rm", "main.py", fid, cwd=str(project))
         assert result.returncode == 0
         assert "Removed" in result.stdout
 
+        content = (project / "main.py").read_text()
+        assert "@pyweb" not in content
+        assert "line1" in content  # code preserved
+
+    def test_rename(self, project):
+        result = run_pyweb("add", "main.py", "old_name", "0", "3", cwd=str(project))
+        fid = result.stdout.split("(")[1].split(")")[0]
+
+        result = run_pyweb("rename", "main.py", fid, "new_name", cwd=str(project))
+        assert result.returncode == 0
+        assert "new_name" in result.stdout
+
+        content = (project / "main.py").read_text()
+        assert 'name="new_name"' in content
+        assert 'name="old_name"' not in content
+
+    def test_prose_set_and_clear(self, project):
+        result = run_pyweb("add", "main.py", "block", "0", "3", cwd=str(project))
+        fid = result.stdout.split("(")[1].split(")")[0]
+
+        # Set prose
+        result = run_pyweb("prose", "main.py", fid, "New note", cwd=str(project))
+        assert result.returncode == 0
+        content = (project / "main.py").read_text()
+        assert "@pyweb:prose New note" in content
+
+        # Clear prose
+        result = run_pyweb("prose", "main.py", fid, cwd=str(project))
+        assert result.returncode == 0
+        content = (project / "main.py").read_text()
+        assert "@pyweb:prose" not in content
+
     def test_view(self, project):
-        run_pyweb("init", cwd=str(project))
         run_pyweb("add", "main.py", "header", "0", "3", cwd=str(project))
         result = run_pyweb("view", "main.py", cwd=str(project))
+        assert result.returncode == 0
+        assert "=== header ===" in result.stdout
+
+    def test_view_specific_fragment(self, project):
+        run_pyweb("add", "main.py", "header", "0", "3", cwd=str(project))
+        run_pyweb("add", "main.py", "body", "6", "9", cwd=str(project))
+        result = run_pyweb("view", "main.py", "-f", "header", cwd=str(project))
         assert result.returncode == 0
         assert "header" in result.stdout
 
     def test_expand(self, project):
-        run_pyweb("init", cwd=str(project))
+        run_pyweb("add", "main.py", "block", "0", "3", cwd=str(project))
         result = run_pyweb("expand", "main.py", cwd=str(project))
         assert result.returncode == 0
+        assert "@pyweb:start" in result.stdout  # markers are in the file
         assert "line0" in result.stdout
 
-    def test_check(self, project):
-        run_pyweb("init", cwd=str(project))
-        run_pyweb("add", "main.py", "block", "0", "5", cwd=str(project))
+    def test_parse_json(self, project):
+        run_pyweb("add", "main.py", "block", "1", "4", cwd=str(project))
+        result = run_pyweb("parse", "main.py", cwd=str(project))
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["file"] == "main.py"
+        assert len(data["fragments"]) == 1
+        assert data["fragments"][0]["name"] == "block"
+        assert data["warnings"] == []
+
+    def test_check_clean(self, project):
+        run_pyweb("add", "main.py", "block", "0", "3", cwd=str(project))
         result = run_pyweb("check", "main.py", cwd=str(project))
         assert result.returncode == 0
         assert "OK" in result.stdout
 
-    def test_anchor(self, project):
-        run_pyweb("init", cwd=str(project))
-        run_pyweb("add", "main.py", "block", "5", "8", cwd=str(project))
-
-        # Cache current content
-        src = project / "main.py"
-        cache_dir = project / ".pyweb" / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        (cache_dir / "main.py").write_text(src.read_text())
-
-        # Modify file
-        old = src.read_text()
-        src.write_text("NEW\n" + old)
-
-        result = run_pyweb("anchor", "main.py", cwd=str(project))
-        assert result.returncode == 0
-        assert "shifted" in result.stdout
-
-    def test_rename(self, project):
-        run_pyweb("init", cwd=str(project))
-        result = run_pyweb("add", "main.py", "old_name", "0", "5", cwd=str(project))
-        frag_id = result.stdout.split("(")[1].split(")")[0]
-
-        result = run_pyweb("rename", "main.py", frag_id, "new_name", cwd=str(project))
-        assert result.returncode == 0
-        assert "new_name" in result.stdout
-
-    def test_add_with_parent(self, project):
-        run_pyweb("init", cwd=str(project))
-        result = run_pyweb("add", "main.py", "parent", "0", "10", cwd=str(project))
-        parent_id = result.stdout.split("(")[1].split(")")[0]
-
-        result = run_pyweb("add", "main.py", "child", "2", "5", "--parent", parent_id, cwd=str(project))
-        assert result.returncode == 0
-        assert "Created fragment" in result.stdout
-
-    def test_error_exits_nonzero(self, project):
-        """Commands that fail should exit 1, not silently succeed."""
-        # add without init
-        result = run_pyweb("add", "main.py", "block", "0", "5", cwd=str(project))
+    def test_check_with_warnings(self, project):
+        # Manually write a broken marker
+        (project / "main.py").write_text(
+            '# @pyweb:start id="f1" name="broken"\n'
+            'x = 1\n'
+            # missing end marker
+        )
+        result = run_pyweb("check", "main.py", cwd=str(project))
         assert result.returncode == 1
+        assert "WARNING" in result.stdout or "WARNING" in result.stderr
 
     def test_resize(self, project):
-        run_pyweb("init", cwd=str(project))
         result = run_pyweb("add", "main.py", "block", "2", "5", cwd=str(project))
-        frag_id = result.stdout.split("(")[1].split(")")[0]
+        fid = result.stdout.split("(")[1].split(")")[0]
 
-        result = run_pyweb("resize", "main.py", frag_id, "1", "7", cwd=str(project))
+        result = run_pyweb("resize", "main.py", fid, "1", "7", cwd=str(project))
         assert result.returncode == 0
         assert "Resized" in result.stdout
 
-    def test_resize_invalid_rejected(self, project):
-        run_pyweb("init", cwd=str(project))
-        p = run_pyweb("add", "main.py", "parent", "0", "10", cwd=str(project))
-        pid = p.stdout.split("(")[1].split(")")[0]
-        c = run_pyweb("add", "main.py", "child", "2", "5", "--parent", pid, cwd=str(project))
-        cid = c.stdout.split("(")[1].split(")")[0]
+    def test_nested_fragments(self, project):
+        # Add parent covering all lines
+        run_pyweb("add", "main.py", "parent", "0", "10", cwd=str(project))
+        # Now add child inside (lines shifted by parent markers)
+        run_pyweb("add", "main.py", "child", "3", "6", cwd=str(project))
 
-        # Resize child outside parent → should fail
-        result = run_pyweb("resize", "main.py", cid, "0", "15", cwd=str(project))
+        result = run_pyweb("parse", "main.py", cwd=str(project))
+        data = json.loads(result.stdout)
+        assert len(data["fragments"]) == 2
+
+        parent = [f for f in data["fragments"] if f["name"] == "parent"][0]
+        child = [f for f in data["fragments"] if f["name"] == "child"][0]
+        assert child["parent_id"] == parent["id"]
+
+    def test_error_on_missing_file(self, project):
+        result = run_pyweb("add", "nope.py", "block", "0", "3", cwd=str(project))
         assert result.returncode == 1
 
     def test_full_workflow(self, project):
-        """End-to-end: init, add fragments, view, anchor, check."""
+        """End-to-end: add fragments, nested, view, check, remove."""
         cwd = str(project)
-
-        # Init
-        r = run_pyweb("init", cwd=cwd)
-        assert r.returncode == 0
 
         # Add parent
         r = run_pyweb("add", "main.py", "all", "0", "10", cwd=cwd)
         assert r.returncode == 0
-        parent_id = r.stdout.split("(")[1].split(")")[0]
 
-        # Add children
-        r = run_pyweb("add", "main.py", "header", "0", "3", "--parent", parent_id, cwd=cwd)
+        # Add children (lines shifted after parent markers inserted)
+        r = run_pyweb("add", "main.py", "header", "2", "5", cwd=cwd)
+        assert r.returncode == 0
+        header_id = r.stdout.split("(")[1].split(")")[0]
+
+        r = run_pyweb("add", "main.py", "body", "7", "10", cwd=cwd)
         assert r.returncode == 0
 
-        r = run_pyweb("add", "main.py", "body", "5", "8", "--parent", parent_id, cwd=cwd)
+        # Add prose
+        r = run_pyweb("prose", "main.py", header_id, "The header section", cwd=cwd)
         assert r.returncode == 0
 
         # List
@@ -178,8 +205,27 @@ class TestCliEntryPoint:
         r = run_pyweb("view", "main.py", cwd=cwd)
         assert r.returncode == 0
         assert "=== all ===" in r.stdout
+        assert "--- header ---" in r.stdout
+
+        # Parse JSON
+        r = run_pyweb("parse", "main.py", cwd=cwd)
+        assert r.returncode == 0
+        data = json.loads(r.stdout)
+        assert len(data["fragments"]) == 3
 
         # Check
         r = run_pyweb("check", "main.py", cwd=cwd)
         assert r.returncode == 0
-        assert "OK" in r.stdout
+
+        # Rename
+        r = run_pyweb("rename", "main.py", header_id, "top_section", cwd=cwd)
+        assert r.returncode == 0
+
+        # Remove one fragment
+        r = run_pyweb("rm", "main.py", header_id, cwd=cwd)
+        assert r.returncode == 0
+
+        # Should still have 2 fragments
+        r = run_pyweb("parse", "main.py", cwd=cwd)
+        data = json.loads(r.stdout)
+        assert len(data["fragments"]) == 2
