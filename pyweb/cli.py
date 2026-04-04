@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from pyweb.core.comments import get_comment_style
+from pyweb.core.comments import get_comment_style, load_config_overrides, CommentStyle
 from pyweb.core.parser import parse_markers, get_roots, get_fragment_by_id, get_fragment_by_name
 from pyweb.core import writer
 
@@ -28,6 +28,37 @@ def _write_source(project_root: Path, file_path: str, content: str) -> None:
     p.write_text(content)
 
 
+def _resolve_comment_style(
+    ctx: click.Context,
+    file_path: str,
+    comment_prefix: str | None,
+    comment_suffix: str | None,
+) -> CommentStyle:
+    """Resolve comment style with full precedence chain."""
+    root = _project_root(ctx)
+    overrides = load_config_overrides(root)
+    return get_comment_style(
+        file_path,
+        overrides=overrides,
+        prefix=comment_prefix,
+        suffix=comment_suffix,
+    )
+
+
+# Common options for commands that write markers
+_comment_options = [
+    click.option("--comment-prefix", default=None, help="Comment prefix (e.g. '# ', '// ', '<!-- ')."),
+    click.option("--comment-suffix", default=None, help="Comment suffix (e.g. ' -->', ' */')."),
+]
+
+
+def comment_options(func):
+    """Decorator to add --comment-prefix and --comment-suffix to a command."""
+    for option in reversed(_comment_options):
+        func = option(func)
+    return func
+
+
 @click.group()
 @click.option("--project", "-p", default=".", help="Project root directory.")
 @click.pass_context
@@ -43,13 +74,14 @@ def cli(ctx: click.Context, project: str) -> None:
 @click.argument("start_line", type=int)
 @click.argument("end_line", type=int)
 @click.option("--prose", default=None, help="Prose/explanation for this fragment.")
+@comment_options
 @click.pass_context
 def add(ctx: click.Context, file: str, name: str, start_line: int, end_line: int,
-        prose: str | None) -> None:
+        prose: str | None, comment_prefix: str | None, comment_suffix: str | None) -> None:
     """Define a new fragment by inserting markers around a line range."""
     root = _project_root(ctx)
     source = _read_source(root, file)
-    cs = get_comment_style(file)
+    cs = _resolve_comment_style(ctx, file, comment_prefix, comment_suffix)
 
     try:
         new_source, fid = writer.add_fragment(source, file, name, start_line, end_line, cs, prose)
@@ -104,12 +136,14 @@ def rename(ctx: click.Context, file: str, fragment_id: str, new_name: str) -> No
 @click.argument("file")
 @click.argument("fragment_id")
 @click.argument("text", required=False, default=None)
+@comment_options
 @click.pass_context
-def prose(ctx: click.Context, file: str, fragment_id: str, text: str | None) -> None:
+def prose(ctx: click.Context, file: str, fragment_id: str, text: str | None,
+          comment_prefix: str | None, comment_suffix: str | None) -> None:
     """Set or clear prose for a fragment."""
     root = _project_root(ctx)
     source = _read_source(root, file)
-    cs = get_comment_style(file)
+    cs = _resolve_comment_style(ctx, file, comment_prefix, comment_suffix)
 
     try:
         new_source = writer.set_prose(source, file, fragment_id, text, cs)
@@ -129,12 +163,14 @@ def prose(ctx: click.Context, file: str, fragment_id: str, text: str | None) -> 
 @click.argument("fragment_id")
 @click.argument("start_line", type=int)
 @click.argument("end_line", type=int)
+@comment_options
 @click.pass_context
-def resize(ctx: click.Context, file: str, fragment_id: str, start_line: int, end_line: int) -> None:
+def resize(ctx: click.Context, file: str, fragment_id: str, start_line: int, end_line: int,
+           comment_prefix: str | None, comment_suffix: str | None) -> None:
     """Resize a fragment to a new line range."""
     root = _project_root(ctx)
     source = _read_source(root, file)
-    cs = get_comment_style(file)
+    cs = _resolve_comment_style(ctx, file, comment_prefix, comment_suffix)
 
     try:
         new_source = writer.resize_fragment(source, file, fragment_id, start_line, end_line, cs)
@@ -214,20 +250,17 @@ def view(ctx: click.Context, file: str, fragment: str | None) -> None:
             click.echo(frag.prose)
             click.echo()
 
-        # Print code lines, rendering children inline
         child_frags = [by_id[cid] for cid in frag.children if cid in by_id]
         child_frags.sort(key=lambda c: c.start_line)
 
         line_idx = frag.content_start_line
         for child in child_frags:
-            # Print owned lines before this child
             for i in range(line_idx, child.start_line):
                 if i < len(lines):
                     click.echo(lines[i], nl=False)
             render(child, depth + 1)
             line_idx = child.end_line
 
-        # Print owned lines after last child
         for i in range(line_idx, frag.content_end_line):
             if i < len(lines):
                 click.echo(lines[i], nl=False)

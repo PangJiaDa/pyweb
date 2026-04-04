@@ -1,6 +1,7 @@
 """Language → comment syntax mapping."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,21 +80,46 @@ _DEFAULTS: dict[str, CommentStyle] = {
 }
 
 
-def get_comment_style(file_path: str, overrides: dict[str, dict] | None = None) -> CommentStyle:
-    """Get the comment style for a file based on its extension.
+def load_config_overrides(project_root: Path) -> dict[str, dict]:
+    """Load comment style overrides from .pyweb.json in the project root."""
+    config_path = project_root / ".pyweb.json"
+    if not config_path.exists():
+        return {}
+    try:
+        data = json.loads(config_path.read_text())
+        return data.get("comments", {})
+    except (json.JSONDecodeError, KeyError):
+        return {}
 
-    Args:
-        file_path: Path to the source file.
-        overrides: Optional dict of extension → {"prefix": ..., "suffix": ...}.
+
+def get_comment_style(
+    file_path: str,
+    overrides: dict[str, dict] | None = None,
+    prefix: str | None = None,
+    suffix: str | None = None,
+) -> CommentStyle:
+    """Get the comment style for a file.
+
+    Precedence:
+    1. Explicit prefix/suffix args (from CLI flags or extension)
+    2. overrides dict (from .pyweb.json config)
+    3. Built-in defaults (60+ extensions)
+    4. Fallback: "# "
     """
+    # 1. Explicit args
+    if prefix is not None:
+        return CommentStyle(prefix=prefix, suffix=suffix or "")
+
     ext = Path(file_path).suffix.lower()
 
+    # 2. Overrides from config
     if overrides and ext in overrides:
         o = overrides[ext]
         return CommentStyle(prefix=o.get("prefix", "# "), suffix=o.get("suffix", ""))
 
+    # 3. Built-in defaults
     if ext in _DEFAULTS:
         return _DEFAULTS[ext]
 
-    # Fallback: hash comment
+    # 4. Fallback
     return CommentStyle("# ", "")
