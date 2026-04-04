@@ -1,4 +1,7 @@
+# @pyweb:start id="0e6262b0" name="Root"
+# @pyweb:start id="3ee86cb7" name="Comments"
 """A simple HTTP API server for a todo list."""
+# @pyweb:end id="3ee86cb7"
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dataclasses import dataclass, field, asdict
@@ -7,7 +10,7 @@ from typing import Any
 
 
 # @pyweb:start id="3d3d7f1e" name="persistence"
-# @pyweb:prose shit man fuck
+# @pyweb:prose some random scrap ass prose comments. \n\n\n hehe
 @dataclass
 class Todo:
     id: int
@@ -93,7 +96,7 @@ store.add("Fix timezone bug in scheduler", tags=["bug", "scheduler"], priority=3
 # @pyweb:start id="d89d3b92" name="handler"
 
 class RequestHandler(BaseHTTPRequestHandler):
-    # @pyweb:start id="cdb09dda" name="http methods"
+    # @pyweb:start id="cdb09dda" name="cool bean"
     def do_GET(self) -> None:
         if self.path == "/todos":
             self.handle_list_todos()
@@ -229,3 +232,4 @@ def run(host: str = "localhost", port: int = 8080) -> None:
 if __name__ == "__main__":
     run()
 # @pyweb:end id="8071e4d1"
+# @pyweb:end id="0e6262b0"
